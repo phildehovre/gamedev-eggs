@@ -6,6 +6,7 @@ window.addEventListener('load', function() {
     
     ctx.fillStyle = 'white';
     ctx.strokeStyle = 'black';
+    ctx.font = '40px  Helvetica';
 
     class Player {
         constructor(game) {
@@ -142,15 +143,24 @@ window.addEventListener('load', function() {
             this.height = this.spriteHeight;
             this.spriteX = this.collisionX - this.width * 0.5;
             this.spriteY = this.collisionY - this.height * 0.75 ;
+            this.hatchTimer = 0;
+            this.hatchInterval = 5000;
+            this.markedForDeletion = false;
         }
 
         draw(context) {
             context.drawImage(this.image, this.spriteX, this.spriteY, this.spriteWidth, this.spriteHeight)
             drawCollisionCircle(context, this)
+            const displayTimer = (this.hatchTimer * 0.001).toFixed(0)
+            if (this.game.debug) {
+                context.fillText(displayTimer, this.collisionX - this.collisionRadius * 0.75, this.collisionY - this.collisionRadius * 3)
+            }
+            
         }
 
-        update() {
-            let collisionObject = [this.game.player, ...this.game.obstacles]
+        update(deltaTime) {
+            // Collision
+            let collisionObject = [this.game.player, ...this.game.obstacles, ...this.game.enemies]
             collisionObject.forEach(object => {
                 let [collision, distance, sumOfRadii, dx, dy] = this.game.checkCollision(this, object)
                 if (collision) {
@@ -163,9 +173,173 @@ window.addEventListener('load', function() {
             
             this.spriteX = this.collisionX - this.width * 0.5;
             this.spriteY = this.collisionY - this.height * 0.75; 
+
+            // Hatching
+            if (this.hatchTimer > this.hatchInterval || this.collisionY < this.game.topMargin) {
+                this.game.hatchlings.push(new Larva(this.game, this.collisionX, this.collisionY))
+                this.markedForDeletion = true;
+                this.game.removeGameObject();
+            } else {
+                this.hatchTimer += deltaTime
+            }
         }
     }
 
+    class Larva {
+        constructor(game, x, y) {
+            this.game = game
+            this.collisionY = y 
+            this.collisionX = x
+            this.collisionRadius = 30;
+            this.image = document.getElementById('larva')
+            this.spriteHeight = 150;
+            this.spriteWidth = 150;
+            this.width = this.spriteWidth;
+            this.height = this.spriteHeight
+            this.spriteX;
+            this.spriteY
+            this.speedY = 1 + Math.random();
+            this.markedForDeletion = false;
+            this.frameY = Math.floor(Math.random() * 2);
+            this.frameX = 0 
+        }
+            draw(context) {
+                context.drawImage(this.image, this.frameX * this.spriteWidth, this.frameY * this.spriteHeight, this.spriteWidth, this.spriteHeight, this.spriteX, this.spriteY, this.spriteWidth, this.spriteHeight, this.width, this.height)
+                drawCollisionCircle(context, this)
+            }
+            update() {
+                // Collision
+                let collisionObject = [this.game.player, ...this.game.obstacles ]
+                collisionObject.forEach(object => {
+                let [collision, distance, sumOfRadii, dx, dy] = this.game.checkCollision(this, object)
+                if (collision) {
+                const unit_x = dx / distance;
+                const unit_y = dy / distance;
+                this.collisionX = object.collisionX + (sumOfRadii + 1) * unit_x
+                this.collisionY = object.collisionY + (sumOfRadii + 1) * unit_y
+                }
+            })
+                this.collisionY -= this.speedY;
+                this.spriteX = this.collisionX - this.width *0.5;
+                this.spriteY = this.collisionY -this.height + 40;
+                // Exit
+                if (this.collisionY < this.game.topMargin) {
+                    this.markedForDeletion = true;
+                    this.game.removeGameObject()
+                    this.game.score++
+                    for (let i = 0; i < 3; i++) {
+                        this.game.particles.push(new Firefly(this.game, this.collisionX, this.collisionY, 'yellow'))
+                    }
+                }
+                // Enemy collision
+                this.game.enemies.forEach(enemy => {
+                    if (this.game.checkCollision(this, enemy)[0]) {
+                        this.markedForDeletion = true;
+                        this.game.removeGameObject();
+                        this.game.lostHatchlings++
+                        for (let i = 0; i < 3; i++) {
+                            this.game.particles.push(new Spark(this.game, this.collisionX, this.collisionY, 'green'))
+                    }
+                    }
+                })
+            }
+    }
+
+    class Enemy {
+        constructor(game) {
+            this.game = game
+            this.collisionRadius = 30;
+            this.collisionX = this.game.width;
+            this.collisionY = this.game.topMargin + (Math.random() * (this.game.height - this.game.topMargin )); 
+            this.image = document.getElementById('toads')
+            this.speedX = Math.random() * 3 + 0.5;
+            this.spriteWidth = 140;
+            this.spriteHeight = 260;
+            this.width = this.spriteWidth;
+            this.height = this.spriteHeight;
+            this.spriteX = this.collisionX - this.width *0.5;
+            this.spriteY = this.collisionY -this.height * 0.5;
+            this.frameX = 0;
+            this.frameY = Math.floor(Math.random() * 4);
+        }
+        draw(context) {
+            context.drawImage(this.image, 0, this.frameY * this.spriteHeight, this.spriteWidth, this.spriteHeight,  this.spriteX, this.spriteY, this.width, this.height)
+            if (this.game.debug) {
+                drawCollisionCircle(context, this)
+            }
+        }
+        update() {
+            let collisionObject = [this.game.player, ...this.game.obstacles, ...this.game.eggs]
+            collisionObject.forEach(object => {
+                let [collision, distance, sumOfRadii, dx, dy] = this.game.checkCollision(this, object)
+                if (collision) {
+
+                    const unit_x = dx / distance;
+                    const unit_y = dy / distance;
+                    this.collisionX = object.collisionX + (sumOfRadii + 1) * unit_x
+                    this.collisionY = object.collisionY + (sumOfRadii + 1) * unit_y
+                }
+            })       
+           this.spriteX = this.collisionX - this.width *0.5;
+           this.spriteY = this.collisionY -this.height + 40;
+           this.collisionX -= this.speedX 
+            if (this.spriteX + this.width < 0) {
+                this.collisionX = this.game.width + this.width + Math.random() * this.game.width * 0.5;
+                this.collisionY = Math.random() * this.game.height;
+            }
+        }
+    }
+
+    class Particle {
+        constructor(game, x, y, color) {
+            this.game = game;
+            this.collisionX = x;
+            this.collisionY = y;
+            this.color = color;
+            this.radius = Math.floor(Math.random() * 10 + 5)
+            this.speedX = Math.random() * 6 - 3;
+            this.speedY = Math.random() * 2 + 0.5;
+            this.angle = 0;
+            this.va = Math.random() * 0.1 + 0.01;
+            this.markedForDeletion = false;
+
+        }
+
+        draw(context) {
+            context.save()
+            context.fillStyle = this.color;
+            context.beginPath();
+            context.arc(this.collisionX, this.collisionY, this.radius,0, Math.PI * 2)
+            context.fill();
+            context.stroke();
+            context.restore()
+        }
+    }
+
+    class Firefly extends Particle {
+        update() {
+            this.angle += this.va;
+            this.collisionX += Math.cos(this.angle) * this.speedX;
+            this.collisionY -= this.speedY;
+            if (this.collisionY < 0 - this.radius) {
+                this.markedForDeletion = true
+                this.game.removeGameObject()
+            }
+        }
+    }
+
+    class Spark  extends Particle {
+        update() {
+            this.angle += this.va * 0.5;
+            this.collisionX -= Math.cos(this.angle) * this.speedX;
+            this.collisionY -= Math.sin(this.angle) * this.speedY;
+            if (this.radius > 0.1) this.radius -= 0.05;
+            if (this.radius < 0.2) {
+                this.markedForDeletion = true;
+                this.game.removeGameObject();
+            }
+        }
+    }
     class Game {
         constructor(canvas) {
             this.canvas = canvas
@@ -174,10 +348,14 @@ window.addEventListener('load', function() {
             this.player = new Player(this)
             this.obstacles = []
             this.eggs = []
+            this.enemies = []
+            this.numberOfEnemies = 3
             this.maxEggs = 10;
             this.eggTimer = 0;
             this.eggInterval = 1000;
             this.numberOfObstacles = 10;
+            this.hatchlings = [];
+            this.particles = []
             this.topMargin = 260;
             this.debug = false;
             this.fps = 70;
@@ -188,6 +366,8 @@ window.addEventListener('load', function() {
                 y: this.height * 0.5,
                 pressed: false
             }
+            this.lostHatchlings = 0;
+            this.score = 0
 
         // event listeners
         canvas.addEventListener('mousedown', (e) => {
@@ -216,27 +396,51 @@ window.addEventListener('load', function() {
         addEgg() {
             this.eggs.push(new Egg(this))
         }
+        addEnemy() {
+            this.enemies.push(new Enemy(this))
+        }
+        
+        removeGameObject() {
+            this.eggs = this.eggs.filter(egg => !egg.markedForDeletion);
+            this.hatchlings = this.hatchlings.filter(object => !object.markedForDeletion)
+            this.particles = this.particles.filter(object => !object.markedForDeletion)
+        }
         render(context, deltaTime) {
             if (this.timer > this.interval) {
                 context.clearRect(0,0, this.width, this.height)
-                this.gameObjects = [...this.eggs, ...this.obstacles, this.player]
+                this.gameObjects = [
+                    ...this.eggs, 
+                    ...this.obstacles, 
+                    ...this.enemies, 
+                    ...this.hatchlings,
+                    ...this.particles,
+                    this.player
+                ]
                 this.gameObjects.sort((a, b) => a.collisionY - b.collisionY)
                 this.gameObjects.forEach(object => {
                     object.draw(context)
-                    object.update()
+                    object.update(deltaTime)
                 });
                 this.timer = 0;
             }
             this.timer += deltaTime
 
+            if (this.enemies.length < this.numberOfEnemies) {
+                this.addEnemy()
+            }
+
             if (this.eggTimer > this.eggInterval && this.eggs.length < this.maxEggs) {
                this.addEgg() 
                this.eggTimer = 0;
-                console.log(this.eggs)
-
             } else {
                 this.eggTimer += deltaTime
             }
+
+            context.save();
+            context.textAlign = 'left'
+            context.fillText('Score: '+ this.score, 50 , 50)
+            context.fillText('Lost: '+ this.lostHatchlings, 50 , 100)
+            context.restore()
         }
 
         checkCollision(a, b) {
@@ -248,6 +452,9 @@ window.addEventListener('load', function() {
         }
          
         init() {
+            for (let i = 0; i < this.numberOfEnemies; i++) {
+                this.addEnemy()
+            }
             let attempts= 0;
             while(this.obstacles.length < this.numberOfObstacles && attempts < 500) {
                 let testObstacle = new Obstacle(this)    
@@ -276,7 +483,6 @@ window.addEventListener('load', function() {
 
     const game= new Game(canvas);
     game.init()
-    console.log(game)
 
     let lastTime = 0;
 
